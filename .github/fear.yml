@@ -1,0 +1,925 @@
+-- Включаем SecureMode для защиты от детекции
+getgenv().SecureMode = true
+
+-- Пытаемся загрузить Rayfield с проверкой и резервным источником
+local success, result = pcall(function()
+    return game:HttpGet('https://sirius.menu/rayfield', true)
+end)
+if not success or not result or result == "" then
+    warn("Ошибка: не удалось загрузить библиотеку Rayfield! Пробуем альтернативный источник...")
+    local altSuccess, altResult = pcall(function()
+        return game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source', true)
+    end)
+    if not altSuccess or not altResult or altResult == "" then
+        warn("Ошибка: оба источника Rayfield недоступны! Скрипт не может продолжить работу.")
+        return
+    end
+    result = altResult
+end
+
+local Rayfield
+local successLoad, RayfieldLoad = pcall(function()
+    Rayfield = loadstring(result)()
+    return Rayfield
+end)
+if not successLoad or not Rayfield then
+    warn("Ошибка: не удалось инициализировать Rayfield! Проверь подключение или библиотеку.")
+    return
+end
+print("Rayfield успешно загружен")
+
+-- Услуги и переменные
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer and LocalPlayer.Character
+local Humanoid = Character and Character:FindFirstChild("Humanoid")
+local World = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Mouse = LocalPlayer and LocalPlayer:GetMouse()
+
+-- Удаление старого UI
+local function clearOldUI()
+    if CoreGui then
+        for _, gui in pairs(CoreGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and (gui.Name:match("Rayfield") or gui.Name:match("Fear")) then
+                pcall(function() gui:Destroy() end)
+                print("Старый UI удалён: " .. gui.Name)
+            end
+        end
+    end
+end
+clearOldUI()
+print("Проверка на старый UI завершена")
+
+-- Создание окна Rayfield с увеличенным размером
+local Window
+local successWindow, WindowResult = pcall(function()
+    Window = Rayfield:CreateWindow({
+        Name = "Fear project",
+        LoadingTitle = "Fear hub",
+        LoadingSubtitle = "by Exxlent",
+        ConfigurationSaving = { Enabled = true, FolderName = "Fear Interface Suite", FileName = "Fear Hub" },
+        KeySystem = false,
+        Parent = CoreGui,
+        SizeX = 800,
+        SizeY = 600
+    })
+    return Window
+end)
+if not successWindow or not Window then
+    warn("Ошибка: не удалось создать окно Rayfield!")
+    return
+end
+print("Окно Fear project создано")
+
+-- Вкладка
+local GameTab
+local successTabs = pcall(function()
+    GameTab = Window:CreateTab("Game", 4483362458)
+end)
+if not successTabs then
+    warn("Ошибка: не удалось создать вкладку!")
+    return
+end
+print("Вкладка создана")
+
+-- World Color Section
+local WorldSection = GameTab:CreateSection("World Color")
+
+-- Переменные для хранения текущего цвета и интенсивности
+local WORLD_COLOR = Color3.new(0.5, 0.7, 1)
+local WORLD_INTENSITY = 1
+local colorCorrection = nil
+
+-- Функция для изменения цвета и интенсивности мира
+local function changeWorldColor(color, intensity)
+    local success, err = pcall(function()
+        if World then
+            if colorCorrection then
+                colorCorrection:Destroy()
+            end
+            colorCorrection = Instance.new("ColorCorrectionEffect")
+            colorCorrection.Parent = World
+            colorCorrection.Enabled = true
+            colorCorrection.Brightness = 0
+            colorCorrection.Contrast = 0
+            colorCorrection.Saturation = -0.5
+            colorCorrection.TintColor = Color3.fromRGB(
+                math.clamp(math.floor(color.R * 255 * intensity), 0, 255),
+                math.clamp(math.floor(color.G * 255 * intensity), 0, 255),
+                math.clamp(math.floor(color.B * 255 * intensity), 0, 255)
+            )
+            for _, effect in pairs(World:GetChildren()) do
+                if effect:IsA("Sky") or (effect:IsA("ColorCorrectionEffect") and effect ~= colorCorrection) or effect:IsA("Atmosphere") then
+                    effect:Destroy()
+                end
+            end
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "World Color",
+                    Content = "World color changed to RGB(" .. math.floor(color.R * 255) .. "," .. math.floor(color.G * 255) .. "," .. math.floor(color.B * 255) .. ") with intensity " .. math.floor(intensity * 50) .. "%!",
+                    Duration = 2
+                })
+            end
+            print("World color changed to: " .. tostring(color) .. " with intensity: " .. intensity)
+        end
+    end)
+    if not success then
+        warn("Ошибка в changeWorldColor: " .. tostring(err))
+    end
+end
+
+-- Функция для сброса мира до стандартного состояния
+local function resetWorldColor()
+    local success, err = pcall(function()
+        if World then
+            if colorCorrection then
+                colorCorrection:Destroy()
+                colorCorrection = nil
+            end
+            for _, effect in pairs(World:GetChildren()) do
+                if effect:IsA("Sky") or effect:IsA("ColorCorrectionEffect") or effect:IsA("Atmosphere") then
+                    effect:Destroy()
+                end
+            end
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "World Color",
+                    Content = "World color and intensity reset to default!",
+                    Duration = 2
+                })
+            end
+            print("World color and intensity reset to default")
+        end
+    end)
+    if not success then
+        warn("Ошибка в resetWorldColor: " .. tostring(err))
+    end
+end
+
+-- ColorPicker для изменения цвета мира
+GameTab:CreateColorPicker({
+    Name = "World Color",
+    Color = WORLD_COLOR,
+    Flag = "WorldColor",
+    Callback = function(Value)
+        if typeof(Value) == "Color3" then
+            WORLD_COLOR = Value
+            changeWorldColor(WORLD_COLOR, WORLD_INTENSITY)
+        else
+            warn("Недопустимый цвет в World Color Callback: " .. tostring(Value))
+        end
+    end
+})
+
+-- Slider для настройки интенсивности мира
+GameTab:CreateSlider({
+    Name = "World Intensity",
+    Range = {0, 2},
+    Increment = 0.1,
+    CurrentValue = WORLD_INTENSITY,
+    Flag = "WorldIntensity",
+    Callback = function(Value)
+        if typeof(Value) == "number" and Value >= 0 and Value <= 2 then
+            WORLD_INTENSITY = Value
+            changeWorldColor(WORLD_COLOR, WORLD_INTENSITY)
+        else
+            warn("Недопустимая интенсивность в World Intensity Callback: " .. tostring(Value))
+        end
+    end
+})
+
+-- Кнопка для сброса цвета и интенсивности мира
+GameTab:CreateButton({
+    Name = "Reset World Color",
+    Callback = function()
+        resetWorldColor()
+    end
+})
+
+-- Weapon Customization Section
+local WeaponSection = GameTab:CreateSection("Weapon Customization")
+
+-- Проверка текущего оружия
+local function getCurrentWeapon()
+    if not Character or not Humanoid then return nil end
+    for _, tool in pairs(Character:GetChildren()) do
+        if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+            return tool
+        end
+    end
+    return nil
+end
+
+-- Переменные для материала и цвета
+local currentWeapon = getCurrentWeapon()
+local WEAPON_MATERIAL = Enum.Material.Metal
+local WEAPON_COLOR = Color3.new(0.5, 0.5, 0.5)
+
+-- Функция для применения материала и цвета
+local function applyWeaponCustomization(material, color)
+    local success, err = pcall(function()
+        local weapon = getCurrentWeapon()
+        if weapon and weapon:FindFirstChild("Handle") then
+            local handle = weapon.Handle
+            handle.Material = material
+            handle.Color = color
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "Weapon Customization",
+                    Content = "Weapon material set to " .. material.Name .. " and color to RGB(" .. math.floor(color.R * 255) .. "," .. math.floor(color.G * 255) .. "," .. math.floor(color.B * 255) .. ")!",
+                    Duration = 2
+                })
+            end
+            print("Weapon material set to: " .. material.Name .. ", color: " .. tostring(color))
+        else
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "Weapon Customization",
+                    Content = "No weapon equipped or handle not found!",
+                    Duration = 2
+                })
+            end
+            warn("No weapon equipped or handle not found")
+        end
+    end)
+    if not success then
+        warn("Ошибка в applyWeaponCustomization: " .. tostring(err))
+        if Rayfield and Window then
+            Rayfield:Notify({
+                Title = "Weapon Customization Error",
+                Content = "Failed to apply customization: " .. tostring(err),
+                Duration = 3
+            })
+        end
+    end
+end
+
+-- Dropdown для выбора материала
+GameTab:CreateDropdown({
+    Name = "Weapon Material",
+    Options = {"Metal", "Wood", "Plastic", "SmoothPlastic", "Neon", "Glass"},
+    CurrentOption = "Metal",
+    Flag = "WeaponMaterial",
+    Callback = function(value)
+        local success, material = pcall(function() return Enum.Material[value] end)
+        if success and material then
+            WEAPON_MATERIAL = material
+            applyWeaponCustomization(WEAPON_MATERIAL, WEAPON_COLOR)
+        else
+            warn("Недопустимый материал в Weapon Material Callback: " .. tostring(value))
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "Weapon Material Error",
+                    Content = "Invalid material selected: " .. tostring(value),
+                    Duration = 2
+                })
+            end
+        end
+    end
+})
+
+-- ColorPicker для выбора цвета
+GameTab:CreateColorPicker({
+    Name = "Weapon Color",
+    Color = WEAPON_COLOR,
+    Flag = "WeaponColor",
+    Callback = function(value)
+        if typeof(value) == "Color3" then
+            WEAPON_COLOR = value
+            applyWeaponCustomization(WEAPON_MATERIAL, WEAPON_COLOR)
+        else
+            warn("Недопустимый цвет в Weapon Color Callback: " .. tostring(value))
+            if Rayfield and Window then
+                Rayfield:Notify({
+                    Title = "Weapon Color Error",
+                    Content = "Invalid color value: " .. tostring(value),
+                    Duration = 2
+                })
+            end
+        end
+    end
+})
+
+-- Обновление оружия при его смене
+LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+    Character = newCharacter
+    Humanoid = Character:FindFirstChild("Humanoid")
+    currentWeapon = getCurrentWeapon()
+    applyWeaponCustomization(WEAPON_MATERIAL, WEAPON_COLOR)
+end)
+
+-- AimBot Section
+local AimBotSection = GameTab:CreateSection("AimBot")
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- Глобальные переменные для управления аимботом
+local ENABLE_AIMBOT = false
+local FOV_RADIUS = 85
+local AIM_SPEED = 0.9
+local MAX_DISTANCE = 1000
+local TARGET_PARTS = {"Head", "HumanoidRootPart", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}
+local FOV_COLOR = Color3.new(1, 1, 1)
+local FOV_THICKNESS = 2
+local DYNAMIC_FOV = false
+local BASE_FOV = 85
+
+-- Drawing circle for FOV
+local circle = Drawing.new("Circle")
+circle.Thickness = FOV_THICKNESS
+circle.NumSides = 12
+circle.Radius = FOV_RADIUS
+circle.Filled = false
+circle.Transparency = 1
+circle.Color = FOV_COLOR
+circle.Visible = false
+
+-- Создание UI элементов в существующей вкладке GameTab
+GameTab:CreateToggle({
+    Name = "Enable Aimbot",
+    CurrentValue = false,
+    Flag = "EnableAimbot",
+    Callback = function(Value)
+        ENABLE_AIMBOT = Value
+        circle.Visible = Value
+    end,
+})
+GameTab:CreateSlider({
+    Name = "FOV Radius",
+    Range = {50, 600},
+    Increment = 5,
+    CurrentValue = BASE_FOV,
+    Flag = "FOVRadius",
+    Callback = function(Value)
+        BASE_FOV = Value
+        FOV_RADIUS = Value
+        circle.Radius = Value
+    end,
+})
+GameTab:CreateSlider({
+    Name = "Aim Speed",
+    Range = {0.1, 1},
+    Increment = 0.1,
+    CurrentValue = AIM_SPEED,
+    Flag = "AimSpeed",
+    Callback = function(Value)
+        AIM_SPEED = Value
+    end,
+})
+GameTab:CreateColorPicker({
+    Name = "FOV Color",
+    Color = FOV_COLOR,
+    Flag = "FOVColor",
+    Callback = function(Value)
+        FOV_COLOR = Value
+        circle.Color = Value
+    end
+})
+GameTab:CreateSlider({
+    Name = "FOV Thickness",
+    Range = {1, 5},
+    Increment = 1,
+    CurrentValue = FOV_THICKNESS,
+    Flag = "FOVThickness",
+    Callback = function(Value)
+        FOV_THICKNESS = Value
+        circle.Thickness = Value
+    end
+})
+GameTab:CreateToggle({
+    Name = "Dynamic FOV",
+    CurrentValue = false,
+    Flag = "DynamicFOV",
+    Callback = function(Value)
+        DYNAMIC_FOV = Value
+    end
+})
+
+-- Проверка видимости через стены
+local function isVisible(targetPosition, targetCharacter)
+    local origin = Camera.CFrame.Position
+    local direction = targetPosition - origin
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character or {}}
+    raycastParams.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    if not result then
+        return true
+    end
+    return result.Instance:IsDescendantOf(targetCharacter)
+end
+
+-- Проверка, является ли игрок союзником
+local function isFriendly(player)
+    local localTeam = LocalPlayer.Team and LocalPlayer.Team.Name or nil
+    local playerTeam = player.Team and player.Team.Name or nil
+    if not localTeam or not playerTeam then
+        return false
+    end
+    return localTeam == playerTeam
+end
+
+-- Основной цикл аимбота
+local function SetupAimbot()
+    RunService.RenderStepped:Connect(function(deltaTime)
+        if not ENABLE_AIMBOT or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            circle.Visible = false
+            return
+        end
+
+        -- Динамический FOV на основе скорости
+        if DYNAMIC_FOV then
+            local speed = LocalPlayer.Character.HumanoidRootPart.Velocity.Magnitude
+            FOV_RADIUS = BASE_FOV + (speed / 16) * 50 -- Увеличивает FOV на основе скорости (16 - стандартная скорость ходьбы)
+            circle.Radius = FOV_RADIUS
+        else
+            FOV_RADIUS = BASE_FOV
+            circle.Radius = FOV_RADIUS
+        end
+
+        circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        circle.Radius = FOV_RADIUS
+        circle.Visible = ENABLE_AIMBOT
+
+        local closestEnemy = nil
+        local closestDist = math.huge
+        
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                if not isFriendly(player) then
+                    local targetPart = nil
+                    for _, partName in ipairs(TARGET_PARTS) do
+                        local tempPart = player.Character:FindFirstChild(partName)
+                        if tempPart then
+                            local screenPos, onScreen = Camera:WorldToViewportPoint(tempPart.Position)
+                            if onScreen then
+                                local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - circle.Position).Magnitude
+                                if dist2D < FOV_RADIUS then
+                                    local dist3D = (tempPart.Position - Camera.CFrame.Position).Magnitude
+                                    if dist3D <= MAX_DISTANCE and isVisible(tempPart.Position, player.Character) then
+                                        if dist3D < closestDist then
+                                            closestDist = dist3D
+                                            targetPart = tempPart
+                                        end
+                                        break  -- Use the first visible part in priority order
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if targetPart then
+                        closestEnemy = targetPart
+                    end
+                end
+            end
+        end
+        
+        if closestEnemy then
+            circle.Color = Color3.new(1, 0, 0)
+            local currentCFrame = Camera.CFrame
+            local targetCFrame = CFrame.lookAt(currentCFrame.Position, closestEnemy.Position)
+            local lerpFactor = math.clamp(AIM_SPEED * deltaTime * 60, 0, 1)
+            if AIM_SPEED >= 1 then
+                lerpFactor = 1
+            end
+            Camera.CFrame = currentCFrame:Lerp(targetCFrame, lerpFactor)
+        else
+            circle.Color = Color3.new(1, 1, 1)
+        end
+    end)
+end
+
+-- Запускаем аимбот
+SetupAimbot()
+
+-- TriggerBot Section
+local TriggerBotSection = GameTab:CreateSection("TriggerBot")
+
+-- Проверка, загружен ли скрипт
+if getgenv().triggerbotLoaded then
+    return
+end
+getgenv().triggerbotLoaded = true
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- Settings
+local triggerbotSettings = {
+    isEnabled = false,
+    clickDelay = 0,
+    lastClickTime = 0,
+    maxDistance = 1500
+}
+
+-- Создание UI элементов в существующей вкладке Game
+GameTab:CreateToggle({
+    Name = "Triggerbot",
+    CurrentValue = false,
+    Flag = "TriggerbotToggle",
+    Callback = function(Value)
+        triggerbotSettings.isEnabled = Value
+    end,
+})
+GameTab:CreateSlider({
+    Name = "Triggerbot Delay",
+    Range = {0, 1.5},
+    Increment = 0.01,
+    Suffix = "seconds",
+    CurrentValue = triggerbotSettings.clickDelay,
+    Flag = "TriggerbotDelay",
+    Callback = function(Value)
+        triggerbotSettings.clickDelay = Value
+    end,
+})
+
+-- Функция для симуляции клика
+local function simulateClick()
+    mouse1press()
+    mouse1release()
+end
+
+-- Проверка видимости головы
+local function isHeadVisible(headPosition)
+    local origin = Camera.CFrame.Position
+    local direction = (headPosition - origin).Unit * triggerbotSettings.maxDistance
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character or {}}
+    raycastParams.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    if result and result.Instance then
+        local hitCharacter = result.Instance:FindFirstAncestorOfClass("Model")
+        return hitCharacter and hitCharacter:FindFirstChild("Humanoid") and hitCharacter:FindFirstChild("Head") and hitCharacter:FindFirstChild("Head").Position == headPosition
+    end
+    return false
+end
+
+-- Проверка, является ли цель врагом
+local function isHoveringEnemy()
+    local target = Mouse.Target
+    if not target then 
+        return false 
+    end
+
+    local character = target:FindFirstAncestorOfClass("Model")
+    if not character then 
+        return false 
+    end
+
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player then 
+        return false 
+    end
+
+    if player == LocalPlayer or player.Team == LocalPlayer.Team then 
+        return false 
+    end
+
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+
+    local head = character:FindFirstChild("Head")
+    if head and isHeadVisible(head.Position) then
+        return true  -- Стреляем в голову, если она видна
+    end
+
+    -- Fallback: стреляем в любую видимую часть тела
+    local origin = Camera.CFrame.Position
+    local direction = (target.Position - origin).Unit * triggerbotSettings.maxDistance
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character or {}}
+    raycastParams.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    if result and result.Instance then
+        local hitCharacter = result.Instance:FindFirstAncestorOfClass("Model")
+        return hitCharacter == character  -- Стреляем, если любая часть врага видна
+    end
+
+    return false
+end
+
+-- Основной цикл триггербота
+local function SetupTriggerbot()
+    RunService.RenderStepped:Connect(function(deltaTime)
+        if not triggerbotSettings.isEnabled or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            return
+        end
+
+        if isHoveringEnemy() then
+            local currentTime = tick()
+            if currentTime - triggerbotSettings.lastClickTime >= triggerbotSettings.clickDelay then
+                simulateClick()
+                triggerbotSettings.lastClickTime = currentTime
+            end
+        end
+    end)
+end
+
+-- Запускаем триггербот
+SetupTriggerbot()
+
+-- ESP Section
+local ESPSection = GameTab:CreateSection("ESP")
+
+local ENABLE_ESP = false
+local ENABLE_BOX = true
+local ENABLE_HP = true
+local ENABLE_NAME = true
+local ENABLE_DISTANCE = true
+local ENABLE_TEAM_COLOR = true
+local ESP_DRAWINGS = {}
+
+-- Проверка видимости через стены
+local function isVisible(targetPosition, targetCharacter)
+    local success, result = pcall(function()
+        local origin = Camera and Camera.CFrame.Position or Vector3.new()
+        local maxAttempts = 5
+        local attempt = 1
+        local direction = (targetPosition - origin).Unit * 1000
+        while attempt <= maxAttempts do
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {Character or {}}
+            raycastParams.IgnoreWater = true
+            local rayResult = workspace:Raycast(origin, direction, raycastParams)
+            if not rayResult then return true end
+            local hitInstance = rayResult.Instance
+            if hitInstance and hitInstance:IsDescendantOf(targetCharacter) then return true end
+            if hitInstance and (hitInstance.Transparency > 0.3 or hitInstance.Size.Magnitude < 2) then
+                origin = rayResult.Position + direction.Unit * 0.01
+                direction = (targetPosition - origin).Unit * (1000 - (origin - Camera.CFrame.Position).Magnitude)
+                attempt = attempt + 1
+            else return false end
+        end
+        return false
+    end)
+    if not success then
+        warn("Ошибка в isVisible: " .. tostring(result))
+        return false
+    end
+    return result
+end
+
+-- Проверка, является ли игрок союзником
+local function isFriendly(player)
+    local localTeam = LocalPlayer.Team and LocalPlayer.Team.Name or nil
+    local playerTeam = player.Team and player.Team.Name or nil
+    return localTeam and playerTeam and localTeam == playerTeam
+end
+
+-- UI элементы для ESP
+GameTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = false,
+    Flag = "EnableESP",
+    Callback = function(Value)
+        if typeof(Value) == "boolean" then
+            ENABLE_ESP = Value
+            if not Value then
+                for _, drawings in pairs(ESP_DRAWINGS) do
+                    if drawings then
+                        for _, d in pairs(drawings) do
+                            if d then d.Visible = false end
+                        end
+                    end
+                end
+            end
+            if Rayfield and Window then
+                Rayfield:Notify({ Title = "ESP", Content = "ESP " .. (Value and "включён" or "выключен") .. "!", Duration = 2 })
+            end
+            print("ESP: " .. (Value and "Включён" or "Выключен"))
+        else
+            warn("Недопустимое значение в Enable ESP Callback: " .. tostring(Value))
+        end
+    end
+})
+GameTab:CreateToggle({
+    Name = "Show Boxes",
+    CurrentValue = ENABLE_BOX,
+    Flag = "ShowBoxes",
+    Callback = function(Value)
+        if typeof(Value) == "boolean" then
+            ENABLE_BOX = Value
+            if Rayfield and Window then
+                Rayfield:Notify({ Title = "ESP", Content = "Show Boxes " .. (Value and "включён" or "выключен") .. "!", Duration = 2 })
+            end
+            print("Show Boxes: " .. (Value and "Включён" or "Выключен"))
+        else
+            warn("Недопустимое значение в Show Boxes Callback: " .. tostring(Value))
+        end
+    end
+})
+GameTab:CreateToggle({
+    Name = "Show Names",
+    CurrentValue = ENABLE_NAME,
+    Flag = "ShowNames",
+    Callback = function(Value)
+        if typeof(Value) == "boolean" then
+            ENABLE_NAME = Value
+            if Rayfield and Window then
+                Rayfield:Notify({ Title = "ESP", Content = "Show Names " .. (Value and "включён" or "выключен") .. "!", Duration = 2 })
+            end
+            print("Show Names: " .. (Value and "Включён" or "Выключен"))
+        else
+            warn("Недопустимое значение в Show Names Callback: " .. tostring(Value))
+        end
+    end
+})
+GameTab:CreateToggle({
+    Name = "Show HP",
+    CurrentValue = ENABLE_HP,
+    Flag = "ShowHP",
+    Callback = function(Value)
+        if typeof(Value) == "boolean" then
+            ENABLE_HP = Value
+            if Rayfield and Window then
+                Rayfield:Notify({ Title = "ESP", Content = "Show HP " .. (Value and "включён" or "выключен") .. "!", Duration = 2 })
+            end
+            print("Show HP: " .. (Value and "Включён" or "Выключен"))
+        else
+            warn("Недопустимое значение в Show HP Callback: " .. tostring(Value))
+        end
+    end
+})
+GameTab:CreateToggle({
+    Name = "Show Distance",
+    CurrentValue = ENABLE_DISTANCE,
+    Flag = "ShowDistance",
+    Callback = function(Value)
+        if typeof(Value) == "boolean" then
+            ENABLE_DISTANCE = Value
+            if Rayfield and Window then
+                Rayfield:Notify({ Title = "ESP", Content = "Show Distance " .. (Value and "включён" or "выключен") .. "!", Duration = 2 })
+            end
+            print("Show Distance: " .. (Value and "Включён" or "Выключен"))
+        else
+            warn("Недопустимое значение в Show Distance Callback: " .. tostring(Value))
+        end
+    end
+})
+
+-- Функция обновления ESP
+local function UpdateESP(player)
+    local success, result = pcall(function()
+        local isMe = player == LocalPlayer
+        if not ENABLE_ESP or (player.Team and player.Team == LocalPlayer.Team) then
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d.Visible = false end
+                end
+            end
+            return
+        end
+        local character = player.Character
+        if not character or not Humanoid or Humanoid.Health <= 0 then
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d.Visible = false end
+                end
+            end
+            return
+        end
+        local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+        local head = character:FindFirstChild("Head")
+        if not rootPart or not head then
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d.Visible = false end
+                end
+            end
+            return
+        end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d.Visible = false end
+                end
+            end
+            return
+        end
+        local headWorldPos = head.Position + Vector3.new(0, 0.5, 0)
+        local feetWorldPos = rootPart.Position - Vector3.new(0, 4, 0)
+        local headScreen, headOnScreen = Camera:WorldToViewportPoint(headWorldPos)
+        local feetScreen, feetOnScreen = Camera:WorldToViewportPoint(feetWorldPos)
+        if not headOnScreen or not feetOnScreen then
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d.Visible = false end
+                end
+            end
+            return
+        end
+        local topY = math.min(headScreen.Y, feetScreen.Y)
+        local bottomY = math.max(headScreen.Y, feetScreen.Y)
+        local height = bottomY - topY
+        local width = height / 1.5
+        local centerX = (headScreen.X + feetScreen.X) / 2
+        local boxPosX = centerX - width / 2
+        local boxPosY = topY
+        local localRoot = Character and Character:FindFirstChild("HumanoidRootPart")
+        local distance = isMe and 0 or (localRoot and math.floor((rootPart.Position - localRoot.Position).Magnitude) or 0)
+        if not ESP_DRAWINGS[player] then
+            ESP_DRAWINGS[player] = {
+                Box = Drawing.new("Square"), Name = Drawing.new("Text"), Distance = Drawing.new("Text"), HP = Drawing.new("Text")
+            }
+            local d = ESP_DRAWINGS[player]
+            d.Box.Thickness = 1.5 d.Box.Filled = false d.Box.Transparency = 1
+            d.Name.Size = 13 d.Name.Transparency = 1 d.Name.Center = true d.Name.Outline = true d.Name.Font = Drawing.Fonts.Monospace
+            d.Distance.Size = 13 d.Distance.Transparency = 1 d.Distance.Center = true d.Distance.Outline = true d.Distance.Font = Drawing.Fonts.Monospace
+            d.HP.Size = 13 d.HP.Transparency = 1 d.HP.Center = true d.HP.Outline = true d.HP.Font = Drawing.Fonts.Monospace
+        end
+        local drawings = ESP_DRAWINGS[player]
+        drawings.Box.Visible = ENABLE_ESP and ENABLE_BOX
+        if ENABLE_ESP and ENABLE_BOX then
+            drawings.Box.Size = Vector2.new(width, height)
+            drawings.Box.Position = Vector2.new(boxPosX, boxPosY)
+            drawings.Box.Color = isMe and Color3.new(0, 1, 0) or (ENABLE_TEAM_COLOR and player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1))
+        end
+        drawings.Name.Visible = ENABLE_ESP and ENABLE_NAME
+        if ENABLE_ESP and ENABLE_NAME then
+            drawings.Name.Text = player.Name
+            drawings.Name.Position = Vector2.new(centerX, topY - 20)
+            drawings.Name.Color = Color3.new(1, 1, 1)
+        end
+        drawings.Distance.Visible = ENABLE_ESP and ENABLE_DISTANCE
+        if ENABLE_ESP and ENABLE_DISTANCE then
+            drawings.Distance.Text = distance .. "m"
+            drawings.Distance.Position = Vector2.new(centerX, bottomY + 5)
+            drawings.Distance.Color = Color3.new(1, 1, 0)
+        end
+        local health = math.floor(humanoid.Health)
+        local maxHealth = humanoid.MaxHealth
+        drawings.HP.Visible = ENABLE_ESP and ENABLE_HP
+        if ENABLE_ESP and ENABLE_HP then
+            drawings.HP.Text = health .. "/" .. maxHealth
+            drawings.HP.Position = Vector2.new(centerX, bottomY + 20)
+            drawings.HP.Color = Color3.new(0, 1, 0)
+        end
+    end)
+    if not success then
+        warn("Ошибка в UpdateESP для " .. (player and player.Name or "неизвестного игрока") .. ": " .. tostring(result))
+    end
+end
+
+-- Инициализация ESP для всех игроков
+local function SetupPlayer(player)
+    local success, err = pcall(function()
+        player.CharacterRemoving:Connect(function()
+            if ESP_DRAWINGS[player] then
+                for _, d in pairs(ESP_DRAWINGS[player]) do
+                    if d then d:Remove() end
+                end
+                ESP_DRAWINGS[player] = nil
+            end
+        end)
+        player.CharacterAdded:Connect(function()
+            pcall(function() UpdateESP(player) end)
+        end)
+        if player.Character then
+            pcall(function() UpdateESP(player) end)
+        end
+    end)
+    if not success then
+        warn("Ошибка в SetupPlayer для " .. (player and player.Name or "неизвестного игрока") .. ": " .. tostring(err))
+    end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    SetupPlayer(player)
+end
+Players.PlayerAdded:Connect(SetupPlayer)
+
+-- Обновление ESP на каждом кадре
+RunService.RenderStepped:Connect(function()
+    local success, err = pcall(function()
+        if not (Character and Character:FindFirstChild("HumanoidRootPart")) then return end
+        for _, player in ipairs(Players:GetPlayers()) do
+            UpdateESP(player)
+        end
+    end)
+    if not success then
+        warn("Ошибка в RenderStepped: " .. tostring(err))
+    end
+end)
